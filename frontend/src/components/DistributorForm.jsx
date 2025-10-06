@@ -10,20 +10,35 @@ import {
   Typography,
   useTheme,
   Grid,
+  Divider,
 } from "@mui/material";
 
-import API_BASE_URL from "../config/api"; 
+// --- LOCAL STORAGE MOCK DB FUNCTIONS ---
+const DISTRIBUTOR_KEY = 'localDistributorsData';
+const DYNAMIC_FIELDS_KEY = 'localDynamicFields';
+
+const getLocalDistributors = () => {
+    const saved = localStorage.getItem(DISTRIBUTOR_KEY);
+    return saved ? JSON.parse(saved) : [];
+};
+
+const saveLocalDistributors = (distributors) => {
+    localStorage.setItem(DISTRIBUTOR_KEY, JSON.stringify(distributors));
+};
+
+const getLocalDynamicFields = () => {
+    const saved = localStorage.getItem(DYNAMIC_FIELDS_KEY);
+    return saved ? JSON.parse(saved) : [];
+};
+// -------------------------------------
 
 const priorities = ["High", "Medium", "Low", "In Discussion"];
 const stages = ["Prospect", "Qualified Lead", "Initial Contact", "Negotiation"];
 
-// Static keys that are NOT rendered in the main loop (e.g., ID, Date, and fields rendered separately)
 const staticKeysToExclude = ["id", "date_added", "priority", "stage", "notes"]; 
 
-// Simple URL validation regex
 const urlRegex = /^(ftp|http|https):\/\/[^ "]+$/;
 
-// Define all static fields needed in the form and in the database
 const allStaticFields = [
     "arn", "arn_holder_name", "city", "owner", "aum", 
     "linkedIn_url", "notes_link", "notes", 
@@ -33,7 +48,6 @@ const allStaticFields = [
     "first_call_date", "follow_up_date"
 ];
 
-// All fields EXCEPT secondary_contact and secondary_name are mandatory
 const requiredStaticFields = [
   "arn", "arn_holder_name", "city", "owner", "aum", 
   "linkedIn_url", "notes_link", "notes", "email",
@@ -70,50 +84,37 @@ const DistributorForm = () => {
   });
 
 
-  // --- API FETCH EFFECT ---
+  // --- INITIAL DATA LOAD (FROM LOCAL STORAGE) ---
   useEffect(() => {
-    const fetchData = async () => {
-      let fields = [];
-      let initialData = {};
+    const fetchData = () => {
+      let fields = getLocalDynamicFields();
+      setDynamicFields(fields);
+      
+      let initialData = { ...initialBaseState };
 
-      try {
-        // 1. Fetch Dynamic Field Definitions
-        const fieldsResponse = await fetch(`${API_BASE_URL}/fields`);
-        if (!fieldsResponse.ok) throw new Error('Failed to fetch field definitions.');
-        fields = await fieldsResponse.json();
-        setDynamicFields(fields);
-        
-        // 2. If Editing, fetch existing distributor data
-        if (isEditing) {
-          const distResponse = await fetch(`${API_BASE_URL}/distributors/${id}`);
-          if (!distResponse.ok) throw new Error(`Failed to fetch distributor ID: ${id}`);
-          initialData = await distResponse.json();
-        } else {
-            initialData = initialBaseState;
+      if (isEditing) {
+        const distributors = getLocalDistributors();
+        // Find existing distributor
+        const existingData = distributors.find(d => d.id === Number(id));
+        if (existingData) {
+            initialData = existingData;
         }
-        
-        // --- DATA MAPPING AND INITIALIZATION ---
-        const mergedData = { ...initialBaseState, ...initialData };
-        const initializedDistributor = {};
-        
-        const allKeys = [...Object.keys(initialBaseState), ...fields.map(f => f.key)];
-        allKeys.forEach(key => {
-            // Convert null/undefined to empty string. Convert number to string.
-            initializedDistributor[key] = mergedData[key] != null ? mergedData[key].toString() : '';
-        });
-        
-        setDistributor(prev => ({
-            ...prev,
-            ...initializedDistributor,
-            id: isEditing ? Number(id) : null,
-        }));
-
-      } catch (error) {
-        console.error("Initialization error:", error);
-        alert(`Error loading data: ${error.message}`);
-      } finally {
-        setLoading(false);
       }
+      
+      const mergedData = { ...initialBaseState, ...initialData };
+      const initializedDistributor = {};
+      
+      const allKeys = [...Object.keys(initialBaseState), ...fields.map(f => f.key)];
+      allKeys.forEach(key => {
+          initializedDistributor[key] = mergedData[key] != null ? mergedData[key].toString() : '';
+      });
+      
+      setDistributor(prev => ({
+          ...prev,
+          ...initializedDistributor,
+          id: isEditing ? Number(id) : Date.now(), // Use unique timestamp ID for new records
+      }));
+      setLoading(false);
     };
     
     fetchData();
@@ -125,7 +126,7 @@ const DistributorForm = () => {
     setDistributor({ ...distributor, [name]: value });
   };
 
-  // --- VALIDATION LOGIC ---
+  // --- VALIDATION LOGIC (UNCHANGED) ---
   const isFormValid = () => {
     const allStaticFilled = requiredStaticFields.every((key) => distributor[key] && distributor[key].toString().trim() !== "");
     const aumIsNumeric = distributor.aum === "" || !isNaN(Number(distributor.aum));
@@ -167,8 +168,8 @@ const DistributorForm = () => {
     return null;
   };
 
-  // --- SUBMISSION HANDLER ---
-  const handleSubmit = async () => {
+  // --- LOCAL SUBMISSION HANDLER ---
+  const handleSubmit = () => {
     setIsSubmitted(true); 
 
     if (!isFormValid()) {
@@ -176,64 +177,46 @@ const DistributorForm = () => {
       return;
     }
     
-    // Final payload construction
-    const finalData = {};
-    const dynamicFieldsData = {};
-
-    const allKeysInState = [...Object.keys(initialBaseState), ...dynamicFields.map(f => f.key)];
+    // Construct final data object for saving
+    const finalRecord = { id: distributor.id };
     
-    allKeysInState.forEach(key => {
+    // Map all fields, converting numbers/dates/nulls correctly
+    const allKeysInForm = [...Object.keys(initialBaseState), ...dynamicFields.map(f => f.key)];
+    
+    allKeysInForm.forEach(key => {
         const value = distributor[key];
         
         if (key === 'aum') {
-            finalData[key] = Number(value) || null;
+            finalRecord[key] = Number(value) || 0;
         } else if (dynamicFields.some(f => f.key === key)) {
             const fieldDef = dynamicFields.find(f => f.key === key);
             if (fieldDef.type === 'numeric') {
-                dynamicFieldsData[key] = Number(value) || null;
+                finalRecord[key] = Number(value) || null;
             } else {
-                dynamicFieldsData[key] = value || null;
+                finalRecord[key] = value || null;
             }
         } else if (key.includes('_date') || key.includes('valid_')) {
-             finalData[key] = value && value.trim() !== '' ? value : null;
-        } else if (key !== 'id') {
-            finalData[key] = value || null;
+             finalRecord[key] = value && value.trim() !== '' ? value : null;
+        } else {
+             finalRecord[key] = value || null;
         }
     });
 
-    finalData.id = distributor.id;
-    finalData.dynamicFields = dynamicFieldsData;
+    // Save to Local Storage
+    let distributors = getLocalDistributors();
     
-    try {
-        const method = isEditing ? 'PUT' : 'POST';
-        const url = isEditing ? `${API_BASE_URL}/distributors/${id}` : `${API_BASE_URL}/distributors`;
-        
-        const response = await fetch(url, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(finalData),
-        });
-
-        if (response.status === 409) throw new Error('ARN already exists or a unique constraint failed.');
-        if (!response.ok) {
-            const errorBody = await response.text();
-            let errorMessage = `Failed to ${isEditing ? 'update' : 'create'} distributor.`;
-            try {
-                const jsonBody = JSON.parse(errorBody);
-                errorMessage = jsonBody.error || jsonBody.message || errorMessage;
-            } catch {
-                errorMessage = errorBody;
-            }
-            throw new Error(errorMessage);
-        }
-
-        alert(`Distributor ${isEditing ? 'updated' : 'created'} successfully!`);
-        navigate("/"); 
-        
-    } catch (error) {
-        console.error("Submission Error:", error);
-        alert(`Error: Failed to ${isEditing ? 'update' : 'create'} distributor.\nDetails: ${error.message}`);
+    if (isEditing) {
+        // Update existing record
+        distributors = distributors.map(d => d.id === finalRecord.id ? finalRecord : d);
+        alert(`Distributor ${finalRecord.arn_holder_name} updated successfully!`);
+    } else {
+        // Create new record
+        distributors.push(finalRecord);
+        alert(`Distributor ${finalRecord.arn_holder_name} created successfully!`);
     }
+
+    saveLocalDistributors(distributors);
+    navigate("/"); 
   };
 
   if (loading) {

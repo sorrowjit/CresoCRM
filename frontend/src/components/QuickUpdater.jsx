@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
 import { Chip, Menu, MenuItem, Divider, Typography } from '@mui/material';
-import API_BASE_URL from '../config/api';
+
+// --- LOCAL STORAGE MOCK DB FUNCTIONS ---
+const DISTRIBUTOR_KEY = 'localDistributorsData';
+
+const getLocalDistributors = () => {
+    const saved = localStorage.getItem(DISTRIBUTOR_KEY);
+    return saved ? JSON.parse(saved) : [];
+};
+
+const saveLocalDistributors = (distributors) => {
+    localStorage.setItem(DISTRIBUTOR_KEY, JSON.stringify(distributors));
+};
+// -------------------------------------
 
 const priorities = ["High", "Medium", "Low", "In Discussion"];
 const stages = ["Prospect", "Qualified Lead", "Initial Contact", "Negotiation"];
@@ -29,31 +41,20 @@ const QuickStatusUpdater = ({ distributorId, fieldKey, initialValue, onUpdateSuc
         setAnchorEl(null);
     };
 
-    const handleQuickUpdate = async (newValue) => {
+    const handleQuickUpdate = (newValue) => {
         handleMenuClose();
         
         try {
-            const payload = { [fieldKey]: newValue };
+            let distributors = getLocalDistributors();
             
-            const response = await fetch(`${API_BASE_URL}/distributors/${distributorId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
+            // Find and update the record in the local array
+            distributors = distributors.map(d => 
+                d.id === distributorId ? { ...d, [fieldKey]: newValue } : d
+            );
 
-            if (!response.ok) {
-                const errorBody = await response.text();
-                let errorMessage = `Failed to update ${fieldKey}.`;
-                try {
-                    const jsonBody = JSON.parse(errorBody);
-                    errorMessage = jsonBody.error || jsonBody.message || errorMessage;
-                } catch {
-                    // Non-JSON error response from server
-                }
-                throw new Error(errorMessage);
-            }
-
-            // Success: Trigger the parent component (DistributorList) to re-fetch all data
+            saveLocalDistributors(distributors);
+            
+            // Success: Trigger the parent component (DistributorList) to refresh
             onUpdateSuccess();
 
         } catch (error) {
