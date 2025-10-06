@@ -29,7 +29,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { Visibility, Edit, Add, Warning, ViewColumn } from "@mui/icons-material"; 
 import FilterBar from "./FilterBar";
-import QuickStatusUpdater from "./QuickUpdater"; 
+import QuickStatusUpdater from "./QuickStatusUpdater"; 
 
 // --- LOCAL STORAGE KEYS ---
 const DISTRIBUTOR_KEY = 'localDistributorsData';
@@ -124,8 +124,6 @@ const DistributorList = () => {
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
   const [tempVisibleKeys, setTempVisibleKeys] = useState(visibleKeys);
 
-  // --- DELETE STATE REMOVED ---
-
 
   // Function to simulate fetching/refreshing the distributor list (now local)
   const fetchData = () => {
@@ -160,7 +158,7 @@ const DistributorList = () => {
   // --- END SYNC EFFECTS ---
 
 
-  // --- COLUMN VISIBILITY HANDLERS (UNCHANGED) ---
+  // --- COLUMN VISIBILITY HANDLERS ---
   const handleToggleColumn = (key) => {
     setTempVisibleKeys(prev => 
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]

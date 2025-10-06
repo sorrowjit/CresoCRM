@@ -9,9 +9,23 @@ import {
   Box,
   Grid,
   useTheme,
+  Divider,
 } from "@mui/material";
 
-import API_BASE_URL from "../config/api";
+// --- LOCAL STORAGE MOCK DB FUNCTIONS ---
+const DISTRIBUTOR_KEY = 'localDistributorsData';
+const DYNAMIC_FIELDS_KEY = 'localDynamicFields';
+
+const getLocalDistributors = () => {
+    const saved = localStorage.getItem(DISTRIBUTOR_KEY);
+    return saved ? JSON.parse(saved) : [];
+};
+
+const getLocalDynamicFields = () => {
+    const saved = localStorage.getItem(DYNAMIC_FIELDS_KEY);
+    return saved ? JSON.parse(saved) : [];
+};
+// -------------------------------------
 
 const baseFieldLabels = {
   arn: "ARN",
@@ -24,7 +38,7 @@ const baseFieldLabels = {
   priority: "Priority",
   linkedIn_url: "LinkedIn URL",
   notes_link: "Notes Link",
-  notes: "Notes", // <-- Will be handled separately at the end
+  notes: "Notes",
   
   address: "Address",
   pin: "PIN",
@@ -66,28 +80,25 @@ const DistributorDetail = () => {
   const [dynamicFields, setDynamicFields] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // --- INITIAL DATA LOAD (FROM LOCAL STORAGE) ---
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // 1. Fetch Dynamic Field Definitions
-        const fieldsResponse = await fetch(`${API_BASE_URL}/fields`);
-        if (!fieldsResponse.ok) throw new Error("Failed to fetch field definitions.");
-        const fields = await fieldsResponse.json();
-        setDynamicFields(fields);
+    const fetchData = () => {
+      let fields = getLocalDynamicFields();
+      setDynamicFields(fields);
 
-        // 2. Fetch specific Distributor data (which includes dynamic values)
-        const distResponse = await fetch(`${API_BASE_URL}/distributors/${id}`);
-        if (!distResponse.ok) throw new Error(`Failed to fetch distributor ID: ${id}`);
-        const distData = await distResponse.json();
-        
+      const distributors = getLocalDistributors();
+      // Use Number(id) as IDs are stored as numbers (timestamps) in the form
+      const distData = distributors.find(d => d.id === Number(id)); 
+      
+      if (distData) {
         setDistributor(distData);
-
-      } catch (error) {
-        console.error("Error loading distributor detail:", error);
-        alert(`Error loading data: ${error.message}`);
-      } finally {
-        setLoading(false);
+      } else {
+        // Since this is a live URL, we navigate back if the record is missing
+        alert("Distributor record not found. Returning to list.");
+        navigate("/");
       }
+
+      setLoading(false);
     };
     fetchData();
   }, [id]);
@@ -123,7 +134,7 @@ const DistributorDetail = () => {
         </Typography>
 
         <Card elevation={4} sx={{ p: 4, borderRadius: 2 }}>
-            {/* TOP BUTTONS */}
+            {/* TOP BUTTONS - MOVED ACTIONS HERE */}
             <Box sx={{ display: "flex", justifyContent: 'flex-end', gap: 2, mb: 3, pb: 1, borderBottom: `1px solid ${theme.palette.divider}` }}>
                 <Button variant="contained" color="primary" onClick={() => navigate(`/edit/${distributor.id}`)}>
                     Edit Record
@@ -148,14 +159,15 @@ const DistributorDetail = () => {
                             variant="outlined"
                             size="medium"
                             fullWidth
-                            InputProps={{ readOnly: true }}
+                            InputProps={{ readOnly: true }} // View-only
                             multiline={(key.includes('url') || key.includes('link'))}
                         />
                     </Grid>
                 ))}
                 
                 {/* RENDER NOTES AS THE LAST FIELD, FULL WIDTH */}
-                {distributor.notes && (
+                {/* Check if notes exists AND is not empty/null before rendering */}
+                {distributor.notes && getFormattedValue(distributor, 'notes') !== '-' && (
                     <Grid item xs={12}>
                         <TextField
                             label={allFieldLabels.notes}
@@ -171,7 +183,6 @@ const DistributorDetail = () => {
                         />
                     </Grid>
                 )}
-
             </Grid>
         </Card>
     </Box>
